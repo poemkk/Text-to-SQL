@@ -1,0 +1,22 @@
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# mac
+.DS_Store
+.idea/
+
+# data (建议不要提交数据集到 Git)
+data/spider/
+
+# outputs/cache
+runs/outputs/
+runs/cache/
+
+# env
+.env
+
+# frontend
+demo_frontend/node_modules/
+demo_frontend/dist/

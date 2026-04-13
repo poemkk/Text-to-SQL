@@ -1,0 +1,11 @@
+project_root: .
+spider_root: data/spider
+
+spider_tables_json: data/spider/tables.json
+spider_train_json: data/spider/train_spider.json
+spider_dev_json: data/spider/dev.json
+spider_database_dir: data/spider/database
+
+runs_dir: runs
+outputs_dir: runs/outputs
+cache_dir: runs/cache
