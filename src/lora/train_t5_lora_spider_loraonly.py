@@ -19,7 +19,13 @@ from transformers import (
 from peft import LoraConfig, get_peft_model
 
 
-def pick_device() -> str:
+def pick_device(device_arg: str = "auto") -> str:
+    if device_arg == "cpu":
+        return "cpu"
+    if device_arg == "mps":
+        if not torch.backends.mps.is_available():
+            raise RuntimeError("--device mps was requested, but MPS is not available")
+        return "mps"
     if torch.backends.mps.is_available():
         return "mps"
     if torch.cuda.is_available():
@@ -31,11 +37,14 @@ def main():
     ap = argparse.ArgumentParser()
 
     # cached jsonl produced by build_loraonly_cache.py
-    ap.add_argument("--train_cache_jsonl", default="runs/cache/loraonly_train_all8659.jsonl")
-    ap.add_argument("--dev_cache_jsonl", default="runs/cache/loraonly_dev_1034.jsonl")
+    ap.add_argument("--train_cache_jsonl", default="runs/cache/loraonly_train_all8659_clean.jsonl")
+    ap.add_argument("--dev_cache_jsonl", default="runs/cache/loraonly_dev_1034_clean.jsonl")
+    ap.add_argument("--train_limit", type=int, default=0, help="0 means no limit")
+    ap.add_argument("--dev_limit", type=int, default=0, help="0 means no limit")
 
     ap.add_argument("--model_name", default="google/flan-t5-base")
-    ap.add_argument("--out_dir", default="runs/outputs/loraonly_flan_t5_base_all8659")
+    ap.add_argument("--out_dir", default="runs/outputs/loraonly_flan_t5_base_all8659_clean_ep3")
+    ap.add_argument("--device", choices=["auto", "cpu", "mps"], default="auto")
 
     # tokenization / generation lengths
     ap.add_argument("--max_src_len", type=int, default=384)
@@ -44,8 +53,9 @@ def main():
     # training hyperparams (safe defaults for M2 Pro 32GB)
     ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--lr", type=float, default=2e-4)
-    ap.add_argument("--batch", type=int, default=8)
-    ap.add_argument("--grad_accum", type=int, default=2)
+    ap.add_argument("--batch", type=int, default=4)
+    ap.add_argument("--grad_accum", type=int, default=4)
+    ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--warmup_ratio", type=float, default=0.03)
     ap.add_argument("--weight_decay", type=float, default=0.0)
     ap.add_argument("--logging_steps", type=int, default=25)
@@ -60,16 +70,22 @@ def main():
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
-    device = pick_device()
+    device = pick_device(args.device)
     print("[INFO] device:", device)
     print("[INFO] train_cache:", args.train_cache_jsonl)
     print("[INFO] dev_cache  :", args.dev_cache_jsonl)
+
+    torch.manual_seed(args.seed)
 
     # Load cached jsonl as datasets.Dataset
     ds = load_dataset(
         "json",
         data_files={"train": args.train_cache_jsonl, "eval": args.dev_cache_jsonl},
     )
+    if args.train_limit > 0:
+        ds["train"] = ds["train"].select(range(min(args.train_limit, len(ds["train"]))))
+    if args.dev_limit > 0:
+        ds["eval"] = ds["eval"].select(range(min(args.dev_limit, len(ds["eval"]))))
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
@@ -88,6 +104,8 @@ def main():
     model = get_peft_model(base, lora_cfg)
     model.print_trainable_parameters()
 
+    pad_id = tokenizer.pad_token_id
+
     def tok(batch: Dict) -> Dict:
         x = tokenizer(
             batch["input_text"],
@@ -99,14 +117,16 @@ def main():
             max_length=args.max_tgt_len,
             truncation=True,
         )
-        x["labels"] = y["input_ids"]
+        labels = y["input_ids"]
+        labels = [[(t if t != pad_id else -100) for t in seq] for seq in labels]
+        x["labels"] = labels
         return x
 
     # tokenize
     train_tok = ds["train"].map(tok, batched=True, remove_columns=ds["train"].column_names)
     eval_tok = ds["eval"].map(tok, batched=True, remove_columns=ds["eval"].column_names)
 
-    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model)
+    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model, label_pad_token_id=-100)
 
     targs = Seq2SeqTrainingArguments(
         output_dir=args.out_dir,
@@ -123,6 +143,7 @@ def main():
         predict_with_generate=False,
         fp16=False,  # MPS usually fp16 is not helpful/stable
         report_to=[],
+        seed=args.seed,
         dataloader_pin_memory=False,  # avoid MPS warning
     )
 
@@ -158,6 +179,8 @@ def main():
             "grad_accum": args.grad_accum,
             "max_src_len": args.max_src_len,
             "max_tgt_len": args.max_tgt_len,
+            "label_pad_token_id": -100,
+            "seed": args.seed,
         },
     }
     with open(os.path.join(args.out_dir, "train_meta.json"), "w", encoding="utf-8") as f:

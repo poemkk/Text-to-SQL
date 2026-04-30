@@ -1,18 +1,30 @@
 # python
 .venv/
+.venv_apps/
 __pycache__/
 *.pyc
 
 # mac
 .DS_Store
 .idea/
+.playwright-cli/
 
 # data (建议不要提交数据集到 Git)
+data/
 data/spider/
 
 # outputs/cache
-runs/outputs/
-runs/cache/
+runs/
+output/
+tmp/
+backup_lora_scripts_*/
+*.zip
+
+# external benchmark repos/datasets kept local
+human-eval-master/
+evalplus-master/
+google-research-mbpp/
+MultiPL-E-main/
 
 # env
 .env
@@ -20,3 +32,6 @@ runs/cache/
 # frontend
 demo_frontend/node_modules/
 demo_frontend/dist/
+
+# backend
+demo_backend/.venv/

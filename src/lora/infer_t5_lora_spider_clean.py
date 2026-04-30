@@ -8,11 +8,11 @@ import re
 from typing import List, Tuple
 
 import torch
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from peft import PeftModel
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-from src.spider.load_spider import iter_spider_samples
 from src.rag.retrieve import retrieve_schema_context
+from src.spider.load_spider import iter_spider_samples
 
 
 PROMPT = """You are a Text-to-SQL system.
@@ -94,36 +94,19 @@ def parse_allowed_from_schema(
 
 def main():
     ap = argparse.ArgumentParser()
-
     ap.add_argument("--dev_json", default="data/spider/dev.json")
     ap.add_argument("--bm25_index", default="runs/cache/bm25_schema")
-
     ap.add_argument("--adapter_dir", required=True)
     ap.add_argument("--base_model", default="google/flan-t5-base")
-
     ap.add_argument("--out", default="runs/outputs/pred_dev1034_lora_rag_clean_ep3.jsonl")
     ap.add_argument("--limit", type=int, default=1034)
-
-    # Keep these defaults aligned with the clean LoRA+RAG cache build.
     ap.add_argument("--topk_table", type=int, default=5)
     ap.add_argument("--topk_col", type=int, default=8)
     ap.add_argument("--topk_fk", type=int, default=8)
     ap.add_argument("--schema_char_limit", type=int, default=1800)
-
     ap.add_argument("--max_input_len", type=int, default=512)
     ap.add_argument("--max_new_tokens", type=int, default=256)
     ap.add_argument("--num_beams", type=int, default=4)
-
-    # Deprecated repair/EGS options are accepted for old shell scripts but ignored.
-    ap.add_argument("--db_root", default="", help=argparse.SUPPRESS)
-    ap.add_argument("--num_candidates", type=int, default=1, help=argparse.SUPPRESS)
-    ap.add_argument("--timeout", type=float, default=1.0, help=argparse.SUPPRESS)
-    ap.add_argument("--max_rows", type=int, default=200, help=argparse.SUPPRESS)
-    ap.add_argument("--api_key", default="", help=argparse.SUPPRESS)
-    ap.add_argument("--repair_model", default="", help=argparse.SUPPRESS)
-    ap.add_argument("--base_url", default="", help=argparse.SUPPRESS)
-    ap.add_argument("--repair_rounds", type=int, default=0, help=argparse.SUPPRESS)
-
     args = ap.parse_args()
 
     out_dir = os.path.dirname(args.out)
@@ -132,7 +115,7 @@ def main():
 
     device = pick_device()
     print("[INFO] device:", device)
-    print("[INFO] clean LoRA+RAG inference: no execution feedback, no DeepSeek repair")
+    print("[INFO] clean LoRA+RAG inference: one prediction per example")
     print(
         "[INFO] rag:",
         f"topk_table={args.topk_table}",
@@ -195,22 +178,6 @@ def main():
                 "question": ex["question"],
                 "gold": ex["query"],
                 "pred": pred,
-                "pred_meta": {
-                    "clean_baseline": True,
-                    "raw": raw,
-                    "rag": {
-                        "topk_table": args.topk_table,
-                        "topk_col": args.topk_col,
-                        "topk_fk": args.topk_fk,
-                        "schema_char_limit": args.schema_char_limit,
-                        "schema_len": len(schema),
-                    },
-                    "generation": {
-                        "max_input_len": args.max_input_len,
-                        "max_new_tokens": args.max_new_tokens,
-                        "num_beams": args.num_beams,
-                    },
-                },
             }
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 

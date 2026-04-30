@@ -61,15 +61,18 @@ def main():
     ap.add_argument("--adapter_dir", required=True)
     ap.add_argument("--base_model", default="google/flan-t5-base")
 
-    ap.add_argument("--out", default="runs/outputs/pred_dev1034_loraonly.jsonl")
+    ap.add_argument("--out", default="runs/outputs/pred_dev1034_loraonly_clean_ep3.jsonl")
     ap.add_argument("--limit", type=int, default=1034)
 
-    ap.add_argument("--max_input_len", type=int, default=256)
-    ap.add_argument("--max_new_tokens", type=int, default=128)
+    ap.add_argument("--max_input_len", type=int, default=384)
+    ap.add_argument("--max_new_tokens", type=int, default=256)
     ap.add_argument("--num_beams", type=int, default=4)
 
     args = ap.parse_args()
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+
+    out_dir = os.path.dirname(args.out)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
 
     device = pick_device()
     print("[INFO] device:", device)
