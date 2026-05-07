@@ -99,7 +99,94 @@ def mysql_connect(args, database=None):
     )
 
 
-def normalize_sql_for_mysql(sql):
+def split_top_level_csv(text):
+    parts = []
+    current = []
+    depth = 0
+    in_single = False
+    in_double = False
+
+    for ch in text:
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif not in_single and not in_double:
+            if ch == "(":
+                depth += 1
+            elif ch == ")" and depth > 0:
+                depth -= 1
+            elif ch == "," and depth == 0:
+                parts.append("".join(current).strip())
+                current = []
+                continue
+        current.append(ch)
+
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def remove_select_alias(expr):
+    s = expr.strip()
+    s = re.sub(r"(?is)\s+AS\s+[A-Za-z_][A-Za-z0-9_]*\s*$", "", s)
+    s = re.sub(r"(?is)\s+[A-Za-z_][A-Za-z0-9_]*\s*$", "", s)
+    return s.strip()
+
+
+def add_group_by_columns(sql):
+    m_select = re.search(r"(?is)^\s*SELECT\s+(.*?)\s+FROM\s+", sql)
+    m_group = re.search(
+        r"(?is)\bGROUP\s+BY\s+(.*?)(\bHAVING\b|\bORDER\s+BY\b|\bLIMIT\b|$)",
+        sql,
+    )
+    if not m_select or not m_group:
+        return sql
+
+    selected = split_top_level_csv(m_select.group(1))
+    group_items = split_top_level_csv(m_group.group(1))
+    existing = {x.strip().lower() for x in group_items}
+
+    additions = []
+    for item in selected:
+        base = remove_select_alias(item)
+        if not base or base == "*":
+            continue
+        if re.search(r"(?is)\b(count|sum|avg|min|max)\s*\(", base):
+            continue
+        if base.lower() not in existing:
+            additions.append(base)
+            existing.add(base.lower())
+
+    if not additions:
+        return sql
+
+    new_group = m_group.group(1).strip() + ", " + ", ".join(additions)
+    start, end = m_group.span(1)
+    return sql[:start] + new_group + sql[end:]
+
+
+def cast_avg_sum_columns(sql, cast_type):
+    pattern = re.compile(r"(?is)\b(AVG|SUM)\s*\(\s*(?!CAST\s*\()([^)]+?)\s*\)")
+    return pattern.sub(lambda m: f"{m.group(1)}(CAST({m.group(2).strip()} AS {cast_type}))", sql)
+
+
+def fix_numeric_string_comparison(sql, cast_type):
+    sql = re.sub(
+        r"(?is)\b([A-Za-z_][A-Za-z0-9_\.]*)\s*([=<>!]{1,2})\s*'(-?\d+(?:\.\d+)?)'",
+        rf"CAST(\1 AS {cast_type}) \2 \3",
+        sql,
+    )
+    sql = re.sub(
+        r"(?is)'(-?\d+(?:\.\d+)?)'\s*([=<>!]{1,2})\s*([A-Za-z_][A-Za-z0-9_\.]*)\b",
+        rf"\1 \2 CAST(\3 AS {cast_type})",
+        sql,
+    )
+    return sql
+
+
+def normalize_sql_for_mysql(sql, error_hint=None):
     """
     Light normalization before MySQL execution.
     This does not rewrite query semantics.
@@ -143,6 +230,15 @@ def normalize_sql_for_mysql(sql):
     # SQLite/PostgreSQL-style cast to MySQL-compatible cast.
     s = re.sub(r"CAST\((.*?)\s+AS\s+INTEGER\)", r"CAST(\1 AS SIGNED)", s, flags=re.IGNORECASE)
     s = re.sub(r"CAST\((.*?)\s+AS\s+INT\)", r"CAST(\1 AS SIGNED)", s, flags=re.IGNORECASE)
+
+    if error_hint:
+        err = str(error_hint).lower()
+        if "only_full_group_by" in err or "group by" in err:
+            s = add_group_by_columns(s)
+        if "incorrect" in err or "truncated" in err or "type" in err:
+            s = fix_numeric_string_comparison(s, "SIGNED")
+        if "function avg" in err or "function sum" in err:
+            s = cast_avg_sum_columns(s, "DOUBLE")
 
     return s
 
@@ -220,7 +316,7 @@ def load_sqlite_to_mysql(sqlite_path, db_id, args, verbose=False):
     return mysql_db
 
 
-def execute_mysql(sql, mysql_db, args):
+def execute_mysql(sql, mysql_db, args, apply_normalization=False, error_hint=None):
     start = time.time()
 
     if not sql or not isinstance(sql, str):
@@ -232,7 +328,7 @@ def execute_mysql(sql, mysql_db, args):
             "mysql_sql": sql,
         }
 
-    mysql_sql = normalize_sql_for_mysql(sql)
+    mysql_sql = normalize_sql_for_mysql(sql, error_hint=error_hint) if apply_normalization else sql
     conn = None
 
     try:
@@ -298,7 +394,7 @@ def main():
         type=str,
         default="data/spider/database",
     )
-    parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument("--limit", type=int, default=1034)
     parser.add_argument("--progress_every", type=int, default=10)
     parser.add_argument("--verbose_load", action="store_true")
 
@@ -320,6 +416,9 @@ def main():
     mysql_ok = 0
     portable_ok = 0
     same_result = 0
+    mysql_after_norm_ok = 0
+    portable_after_norm_ok = 0
+    same_after_norm = 0
 
     db_cache = {}
     start_all = time.time()
@@ -342,31 +441,103 @@ def main():
                 )
 
             mysql_db = db_cache[db_id]
-            mysql_result = execute_mysql(sql, mysql_db, args)
+            mysql_raw = execute_mysql(sql, mysql_db, args, apply_normalization=False)
 
-            item.update(mysql_result)
+            item["mysql_exec_ok"] = mysql_raw["mysql_exec_ok"]
+            item["mysql_exec_error"] = mysql_raw["mysql_exec_error"]
+            item["mysql_result"] = mysql_raw["mysql_result"]
+            item["mysql_latency_ms"] = mysql_raw["mysql_latency_ms"]
+            item["mysql_sql"] = mysql_raw["mysql_sql"]
+
+            item["mysql_normalized_attempted"] = False
+            item["mysql_normalized_exec_ok"] = False
+            item["mysql_normalized_exec_error"] = None
+            item["mysql_normalized_result"] = None
+            item["mysql_normalized_latency_ms"] = None
+            item["mysql_normalized_sql"] = None
+            item["mysql_normalized_strategy"] = None
+
+            final_result = mysql_raw
+
+            if not mysql_raw["mysql_exec_ok"]:
+                item["mysql_normalized_attempted"] = True
+                attempts = [
+                    ("base", execute_mysql(sql, mysql_db, args, apply_normalization=True)),
+                    (
+                        "error_aware",
+                        execute_mysql(
+                            sql,
+                            mysql_db,
+                            args,
+                            apply_normalization=True,
+                            error_hint=mysql_raw["mysql_exec_error"],
+                        ),
+                    ),
+                ]
+
+                best = attempts[-1][1]
+                best_name = attempts[-1][0]
+
+                for name, result in attempts:
+                    best = result
+                    best_name = name
+                    if result["mysql_exec_ok"]:
+                        final_result = result
+                        break
+
+                item["mysql_normalized_exec_ok"] = best["mysql_exec_ok"]
+                item["mysql_normalized_exec_error"] = best["mysql_exec_error"]
+                item["mysql_normalized_result"] = best["mysql_result"]
+                item["mysql_normalized_latency_ms"] = best["mysql_latency_ms"]
+                item["mysql_normalized_sql"] = best["mysql_sql"]
+                item["mysql_normalized_strategy"] = best_name
 
             total += 1
 
             if item.get("selected_exec_ok"):
                 sqlite_ok += 1
 
-            if mysql_result["mysql_exec_ok"]:
+            if mysql_raw["mysql_exec_ok"]:
                 mysql_ok += 1
 
-            if item.get("selected_exec_ok") and mysql_result["mysql_exec_ok"]:
+            if item.get("selected_exec_ok") and mysql_raw["mysql_exec_ok"]:
                 portable_ok += 1
 
-                if normalize_result(sqlite_result) == normalize_result(mysql_result["mysql_result"]):
+                if normalize_result(sqlite_result) == normalize_result(mysql_raw["mysql_result"]):
                     same_result += 1
 
             item["mysql_crossdb_portable"] = (
-                item.get("selected_exec_ok") and mysql_result["mysql_exec_ok"]
+                item.get("selected_exec_ok") and mysql_raw["mysql_exec_ok"]
             )
             item["mysql_crossdb_same_result"] = (
                 item["mysql_crossdb_portable"]
-                and normalize_result(sqlite_result) == normalize_result(mysql_result["mysql_result"])
+                and normalize_result(sqlite_result) == normalize_result(mysql_raw["mysql_result"])
             )
+
+            item["mysql_after_normalize_exec_ok"] = final_result["mysql_exec_ok"]
+            item["mysql_after_normalize_result"] = final_result["mysql_result"]
+            item["mysql_after_normalize_sql"] = final_result["mysql_sql"]
+            item["mysql_after_normalize_error"] = final_result["mysql_exec_error"]
+            item["mysql_after_normalize_used_normalization"] = (
+                (not mysql_raw["mysql_exec_ok"]) and item["mysql_normalized_exec_ok"]
+            )
+
+            item["mysql_crossdb_portable_after_normalize"] = (
+                item.get("selected_exec_ok") and final_result["mysql_exec_ok"]
+            )
+            item["mysql_crossdb_same_result_after_normalize"] = (
+                item["mysql_crossdb_portable_after_normalize"]
+                and normalize_result(sqlite_result) == normalize_result(final_result["mysql_result"])
+            )
+
+            if item["mysql_after_normalize_exec_ok"]:
+                mysql_after_norm_ok += 1
+
+            if item["mysql_crossdb_portable_after_normalize"]:
+                portable_after_norm_ok += 1
+
+            if item["mysql_crossdb_same_result_after_normalize"]:
+                same_after_norm += 1
 
             out.write(json.dumps(item, ensure_ascii=False) + "\n")
             out.flush()
@@ -379,8 +550,10 @@ def main():
                 print(
                     f"[PROGRESS] {idx}/{len(rows)} "
                     f"| db_id={db_id} "
-                    f"| mysql_ok={mysql_ok}/{total}={mysql_ok / total:.3f} "
-                    f"| same={same_result}/{total}={same_result / total:.3f} "
+                    f"| mysql_raw_ok={mysql_ok}/{total}={mysql_ok / total:.3f} "
+                    f"| mysql_after_norm_ok={mysql_after_norm_ok}/{total}={mysql_after_norm_ok / total:.3f} "
+                    f"| same_raw={same_result}/{total}={same_result / total:.3f} "
+                    f"| same_after_norm={same_after_norm}/{total}={same_after_norm / total:.3f} "
                     f"| elapsed={elapsed:.1f}s "
                     f"| eta={remaining:.1f}s"
                 )
@@ -388,9 +561,21 @@ def main():
     print("=== MySQL Multi-backend Summary ===")
     print(f"total examples: {total}")
     print(f"SQLite executable: {sqlite_ok}/{total} = {sqlite_ok / total:.3f}")
-    print(f"MySQL executable: {mysql_ok}/{total} = {mysql_ok / total:.3f}")
-    print(f"Cross-DB executable portability: {portable_ok}/{total} = {portable_ok / total:.3f}")
-    print(f"Cross-DB same result: {same_result}/{total} = {same_result / total:.3f}")
+    print(f"MySQL executable (raw SQL): {mysql_ok}/{total} = {mysql_ok / total:.3f}")
+    print(
+        f"MySQL executable (after normalize fallback): "
+        f"{mysql_after_norm_ok}/{total} = {mysql_after_norm_ok / total:.3f}"
+    )
+    print(f"Cross-DB portability (raw SQL): {portable_ok}/{total} = {portable_ok / total:.3f}")
+    print(
+        f"Cross-DB portability (after normalize fallback): "
+        f"{portable_after_norm_ok}/{total} = {portable_after_norm_ok / total:.3f}"
+    )
+    print(f"Cross-DB same result (raw SQL): {same_result}/{total} = {same_result / total:.3f}")
+    print(
+        f"Cross-DB same result (after normalize fallback): "
+        f"{same_after_norm}/{total} = {same_after_norm / total:.3f}"
+    )
     print(f"[OK] output: {out_path}")
 
 

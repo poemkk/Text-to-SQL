@@ -25,6 +25,7 @@ def execute_sql(db_path, sql):
             "exec_ok": False,
             "exec_error": "empty_or_invalid_sql",
             "result": None,
+            "result_columns": None,
             "latency_ms": 0.0,
         }
 
@@ -32,6 +33,7 @@ def execute_sql(db_path, sql):
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
         cur.execute(sql)
+        columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchall()
         conn.close()
 
@@ -41,6 +43,7 @@ def execute_sql(db_path, sql):
             "exec_ok": True,
             "exec_error": None,
             "result": rows,
+            "result_columns": columns,
             "latency_ms": latency_ms,
         }
 
@@ -51,6 +54,7 @@ def execute_sql(db_path, sql):
             "exec_ok": False,
             "exec_error": str(e),
             "result": None,
+            "result_columns": None,
             "latency_ms": latency_ms,
         }
 
@@ -177,6 +181,7 @@ def main():
                 cand["repair_exec_ok"] = False
                 cand["repair_exec_error"] = None
                 cand["repair_result"] = None
+                cand["repair_result_columns"] = None
                 cand["repair_exec_correct"] = False
 
                 if cand.get("exec_ok"):
@@ -220,6 +225,7 @@ def main():
                 cand["repair_exec_ok"] = repair_validation["exec_ok"]
                 cand["repair_exec_error"] = repair_validation["exec_error"]
                 cand["repair_result"] = repair_validation["result"]
+                cand["repair_result_columns"] = repair_validation.get("result_columns")
                 cand["repair_latency_ms"] = repair_validation["latency_ms"]
 
                 if repair_validation["exec_ok"]:

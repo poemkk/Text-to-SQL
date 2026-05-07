@@ -1,7 +1,3 @@
-import { useEffect, useState } from "react";
-import { api } from "../api.js";
-import TaskRouter from "./TaskRouter.jsx";
-
 const inputBlocks = [
   {
     title: "Natural-language question q",
@@ -24,6 +20,25 @@ const candidateSql = [
   { id: "y1", text: "SELECT COUNT(*) FROM singer;", status: "ok" },
   { id: "y2", text: "SELECT COUNT(*) FROM singers;", status: "fail" },
   { id: "y3", text: "SELECT COUNT(DISTINCT singer_id) FROM singer;", status: "ok" },
+];
+
+const architectureSteps = [
+  {
+    title: "Generate",
+    desc: "build candidate SQL from question plus schema context",
+  },
+  {
+    title: "Validate",
+    desc: "execute each candidate and collect database evidence",
+  },
+  {
+    title: "Repair",
+    desc: "rewrite failed SQL using error-feedback and re-validate",
+  },
+  {
+    title: "EASE Select",
+    desc: "choose the final practical SQL via evidence-aware semantic arbitration",
+  },
 ];
 
 const pipelineStages = [
@@ -99,16 +114,16 @@ const pipelineStages = [
     key: "select",
     index: "4",
     title: "Select",
-    subtitle: "Final SQL selection",
+    subtitle: "EASE final selection",
     tone: "purple",
     content: (
       <div className="selector-box">
-        <strong>Lightweight selector</strong>
+        <strong>EASE-Selector</strong>
         <ul>
-          <li>executability</li>
-          <li>result consistency</li>
-          <li>repair history</li>
-          <li>error type</li>
+          <li>question + schema alignment</li>
+          <li>candidate SQL structure</li>
+          <li>execution evidence + repair trace</li>
+          <li>pairwise semantic correction</li>
         </ul>
         <div className="final-sql">
           <span>y_final</span>
@@ -123,61 +138,47 @@ const modules = [
   ["G", "Generator", "LLM / cached candidates"],
   ["V", "Validator", "SQL execution engine"],
   ["R", "Repairer", "error feedback"],
-  ["Sᵢ", "Selector", "rules / scores"],
+  ["Sₑ", "EASE Selector", "evidence-aware semantic selection"],
   ["E", "Evaluator", "metrics analysis"],
 ];
 
 const backends = ["SQLite", "DuckDB", "PostgreSQL", "MySQL"];
 
-const routes = [
-  {
-    key: "sql",
-    title: "SQL",
-    text: "schema + candidates + SQLite / DuckDB / PostgreSQL / MySQL",
-  },
-  {
-    key: "python",
-    title: "Python",
-    text: "function/task prompt + unit tests",
-  },
-  {
-    key: "java",
-    title: "Java",
-    text: "method signature + javac + tests",
-  },
+const selectorSignals = [
+  "question-schema alignment",
+  "candidate SQL structure",
+  "execution evidence and row signal",
+  "repair trace and error type",
+  "pairwise semantic correction",
+];
+
+const selectorRows = [
+  ["Rule-based baseline", "77.9%", "exec_ok + source priority + repair flag"],
+  ["Multi-LLM practical", "81.6%", "larger candidate pool but weaker final semantic decision"],
+  ["EASE-Selector", "85.3%", "semantic evidence + execution evidence + repair trace"],
 ];
 
 export default function FrameworkFlow() {
-  const [framework, setFramework] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    api.get("/api/framework").then(setFramework).catch((err) => setError(err.message));
-  }, []);
-
-  const steps = framework?.steps || [
-    "Input Task",
-    "Task Routing",
-    "Context Building",
-    "Candidate Generation",
-    "Validation Environment",
-    "Error-feedback Repair",
-    "Re-validation / Re-testing",
-    "Final Selection",
-    "Metrics Evaluation",
-  ].map((name, index) => ({ id: index + 1, name }));
-
   return (
     <div className="page-grid framework-page">
       <section className="architecture-board full">
         <div className="architecture-title">
           <div>
             <h2>A²V-SQL Framework Architecture</h2>
-            <p>generate - validate - repair - select</p>
+            <p>schema-grounded generation, execution validation, repair and EASE final selection</p>
           </div>
-          <span>Executable-task prototype</span>
+          <span>Prototype architecture overview</span>
         </div>
-        {error && <div className="error-box">{error}</div>}
+
+        <div className="architecture-step-strip">
+          {architectureSteps.map((node, index) => (
+            <div key={node.title} className="architecture-step-node">
+              <span>{index + 1}</span>
+              <strong>{node.title}</strong>
+              <small>{node.desc}</small>
+            </div>
+          ))}
+        </div>
 
         <div className="architecture-layout">
           <aside className="architecture-side input-side">
@@ -251,37 +252,68 @@ export default function FrameworkFlow() {
         </div>
       </section>
 
-      <section className="panel full">
+      <section className="panel full selector-logic-panel">
         <div className="section-heading">
-          <h2>{framework?.title || "A²V Framework for LLM-generated executable tasks"}</h2>
-          <p>Unified nine-step route used by the prototype backend and frontend.</p>
+          <h2>EASE Selector Logic</h2>
+          <p>The final practical SQL is chosen by semantic evidence plus execution evidence.</p>
         </div>
-        <div className="flow-grid">
-          {steps.map((step) => (
-            <div key={step.id} className="flow-step">
-              <span>{step.id}</span>
-              <strong>{step.name}</strong>
+
+        <div className="selector-logic-grid">
+          <div className="selector-logic-card">
+            <span className="logic-tag">Input pool</span>
+            <strong>Candidate SQL after validation and repair</strong>
+            <div className="candidate-box compact">
+              {candidateSql.map((item) => (
+                <div key={item.id} className="candidate-row compact">
+                  <b>{item.id}</b>
+                  <code>{item.text}</code>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+
+          <div className="selector-logic-card">
+            <span className="logic-tag">Evidence</span>
+            <strong>EASE semantic features</strong>
+            <div className="selector-signal-list">
+              {selectorSignals.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </div>
+          </div>
+
+          <div className="selector-logic-card final">
+            <span className="logic-tag">Output</span>
+            <strong>Final selected SQL</strong>
+            <pre className="code-block small">SELECT COUNT(*) FROM singer;</pre>
+            <p>
+              EASE prioritizes executable candidates that best preserve the intended
+              semantics of the natural-language question.
+            </p>
+          </div>
+        </div>
+
+        <div className="table-wrap selector-logic-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Selector</th>
+                <th>Execution accuracy</th>
+                <th>Main decision signal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectorRows.map((row) => (
+                <tr key={row[0]}>
+                  <td>{row[0]}</td>
+                  <td>{row[1]}</td>
+                  <td>{row[2]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
-
-      <section className="panel full">
-        <div className="section-heading">
-          <h2>Task Lines</h2>
-          <p>SQL is the thesis main line; Python and Java show transferability.</p>
-        </div>
-        <div className="route-cards">
-          {routes.map((route) => (
-            <div key={route.key} className={`route-card ${route.key}`}>
-              <strong>{route.title}</strong>
-              <span>{route.text}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <TaskRouter />
     </div>
   );
 }

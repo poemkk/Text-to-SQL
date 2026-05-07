@@ -22,6 +22,7 @@ def execute_sql(db_path, sql):
             "exec_ok": False,
             "exec_error": "empty_or_invalid_sql",
             "result": None,
+            "result_columns": None,
             "latency_ms": 0.0,
         }
 
@@ -29,6 +30,7 @@ def execute_sql(db_path, sql):
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
         cur.execute(sql)
+        columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchall()
         conn.close()
 
@@ -38,6 +40,7 @@ def execute_sql(db_path, sql):
             "exec_ok": True,
             "exec_error": None,
             "result": rows,
+            "result_columns": columns,
             "latency_ms": latency_ms,
         }
 
@@ -48,6 +51,7 @@ def execute_sql(db_path, sql):
             "exec_ok": False,
             "exec_error": str(e),
             "result": None,
+            "result_columns": None,
             "latency_ms": latency_ms,
         }
 
@@ -101,6 +105,7 @@ def main():
             item["gold_exec_ok"] = gold_exec["exec_ok"]
             item["gold_exec_error"] = gold_exec["exec_error"]
             item["gold_result"] = gold_exec["result"]
+            item["gold_result_columns"] = gold_exec.get("result_columns")
 
             norm_gold = normalize_result(gold_exec["result"])
 

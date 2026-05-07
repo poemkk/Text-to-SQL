@@ -24,7 +24,7 @@ trap cleanup EXIT INT TERM
 cd "$ROOT_DIR"
 
 echo "[demo] Starting backend: http://127.0.0.1:8000"
-"$PYTHON_BIN" -m uvicorn src.demo.api:app --reload --host 127.0.0.1 --port 8000 &
+"$PYTHON_BIN" -m uvicorn --app-dir "$ROOT_DIR/demo_backend" main:app --reload --host 127.0.0.1 --port 8000 &
 BACKEND_PID=$!
 
 echo "[demo] Starting frontend: http://127.0.0.1:5173"

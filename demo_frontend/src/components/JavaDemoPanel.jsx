@@ -112,8 +112,25 @@ export default function JavaDemoPanel() {
       <ValidationPanel
         title="Java A²V Flow"
         tone="purple"
-        steps={["Method signature", "Candidate code", "javac", "Tests", "Repair", "Re-testing"]}
+        steps={[
+          "Task input",
+          "Candidate generation",
+          "javac compilation",
+          "test assertions",
+          "Error-feedback repair",
+          "Re-validation",
+          "Selector",
+          "Final pass",
+        ]}
       />
+      <section className="panel selector-note-card">
+        <div className="section-heading">
+          <h2>Java Selector</h2>
+        </div>
+        <p className="selector-text">
+          choose the best compiling and passing Java candidate
+        </p>
+      </section>
       <RepairPanel repair={repair} />
     </div>
   );

@@ -109,8 +109,24 @@ export default function PythonDemoPanel() {
       <ValidationPanel
         title="Python A²V Flow"
         tone="orange"
-        steps={["Task prompt", "Candidate code", "Unit tests", "Repair", "Re-testing"]}
+        steps={[
+          "Task input",
+          "Candidate generation",
+          "Unit tests / I/O tests",
+          "Error-feedback repair",
+          "Re-validation",
+          "Selector",
+          "Final pass",
+        ]}
       />
+      <section className="panel selector-note-card">
+        <div className="section-heading">
+          <h2>Python Selector</h2>
+        </div>
+        <p className="selector-text">
+          choose the best passing Python candidate using validation evidence
+        </p>
+      </section>
       <RepairPanel repair={repair} />
     </div>
   );

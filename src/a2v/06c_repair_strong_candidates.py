@@ -55,6 +55,7 @@ def execute_sql(db_path, sql):
             "exec_ok": False,
             "exec_error": "empty_or_invalid_sql",
             "result": None,
+            "result_columns": None,
             "latency_ms": 0.0,
         }
 
@@ -62,6 +63,7 @@ def execute_sql(db_path, sql):
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
         cur.execute(sql)
+        columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchall()
         conn.close()
 
@@ -71,6 +73,7 @@ def execute_sql(db_path, sql):
             "exec_ok": True,
             "exec_error": None,
             "result": rows,
+            "result_columns": columns,
             "latency_ms": latency_ms,
         }
 
@@ -81,6 +84,7 @@ def execute_sql(db_path, sql):
             "exec_ok": False,
             "exec_error": str(e),
             "result": None,
+            "result_columns": None,
             "latency_ms": latency_ms,
         }
 
@@ -405,6 +409,7 @@ def main():
                 cand["strong_repair_exec_ok"] = False
                 cand["strong_repair_exec_error"] = None
                 cand["strong_repair_result"] = None
+                cand["strong_repair_result_columns"] = None
                 cand["strong_repair_exec_correct"] = False
 
                 if repaired_count >= args.max_repairs:
@@ -467,6 +472,7 @@ def main():
                         "exec_ok": validation["exec_ok"],
                         "exec_error": validation["exec_error"],
                         "result": validation["result"],
+                        "result_columns": validation.get("result_columns"),
                         "latency_ms": validation["latency_ms"],
                         "exec_correct": exec_correct,
                         "value_hints": value_hints,
@@ -492,6 +498,7 @@ def main():
                     cand["strong_repair_exec_ok"] = best_validation["exec_ok"]
                     cand["strong_repair_exec_error"] = best_validation["exec_error"]
                     cand["strong_repair_result"] = best_validation["result"]
+                    cand["strong_repair_result_columns"] = best_validation.get("result_columns")
 
                     if best_validation["exec_ok"]:
                         repair_exec_ok_count += 1

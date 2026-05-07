@@ -38,6 +38,13 @@ class SqlRepairRequest(BaseModel):
     error: str = ""
 
 
+class SqlPipelineRequest(BaseModel):
+    db_id: str
+    question: str
+    method: str
+    selector: str = "ease_selector"
+
+
 class RepairRequest(BaseModel):
     code: str
     error: str = ""
@@ -97,6 +104,19 @@ def sql_repair(payload: SqlRepairRequest):
         payload.bad_sql,
         payload.error,
     )
+
+
+@app.post("/api/sql/run_pipeline")
+def sql_run_pipeline(payload: SqlPipelineRequest):
+    try:
+        return sql_service.run_pipeline(
+            payload.db_id,
+            payload.question,
+            payload.method,
+            payload.selector,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/python/summary")

@@ -226,8 +226,26 @@ export default function SqlDemoPanel() {
           "SQLite result check",
           "Error-feedback repair",
           "Re-validation",
+          "Selector: choose final SQL candidate",
         ]}
       />
+
+      <section className="panel selector-note-card">
+        <div className="section-heading">
+          <h2>Selector / Final candidate</h2>
+          <p>Selection without gold answers.</p>
+        </div>
+        <ul className="selector-note-list">
+          <li>validation-guided selection</li>
+          <li>prefers executable candidates</li>
+          <li>uses execution result, repair status and errors</li>
+          <li>does not use gold answer</li>
+        </ul>
+        <div className="selector-final-line">
+          <span>Selected SQL</span>
+          <code>{sqlText || "No candidate selected yet"}</code>
+        </div>
+      </section>
 
       <ResultPanel result={execution} />
       <RepairPanel repair={repair} />
