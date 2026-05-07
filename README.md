@@ -1,70 +1,70 @@
-# A²V-SQL: Generate-Validate-Repair-Select for Reliable Text-to-SQL
+# A²V-SQL: Generate-Validate-Repair-Select для надёжного Text-to-SQL
 
-A²V-SQL is a research prototype for improving the reliability of LLM-based Text-to-SQL systems. Instead of treating a single LLM output as the final answer, the project wraps SQL generation in an execution-aware closed loop:
+A²V-SQL — исследовательский прототип для повышения надёжности LLM-based Text-to-SQL систем. Вместо того чтобы считать одиночный ответ большой языковой модели окончательным результатом, проект помещает генерацию SQL в замкнутый цикл проверки исполнения:
 
 ```text
 generate -> validate -> repair -> select
 ```
 
-The framework uses existing LLMs as candidate SQL generators and uses database execution as an external validator. It combines Schema-RAG, execution validation, error-feedback repair, multi-candidate selection, semantic evidence-aware selection, and multi-backend dialect validation.
+Фреймворк использует существующие LLM как генераторы SQL-кандидатов, а среду выполнения базы данных — как внешний валидатор. В проекте объединены Schema-RAG, execution validation, error-feedback repair, multi-candidate selection, evidence-aware semantic selection и multi-backend dialect validation.
 
-This repository supports the experiments and prototype system described in the thesis:
+Репозиторий содержит экспериментальный код и интерактивный прототип, связанные с магистерской работой:
 
 > Text-to-SQL на основе крупных языковых моделей: исследование и прототипирование междоменной системы
 
-## Key Ideas
+## Основная идея
 
-- **Generate**: create SQL candidates with Prompt-only, BM25 Schema-RAG, Embedding Schema-RAG, LoRA-only, LoRA + RAG, or multi-LLM generation.
-- **Validate**: execute candidate SQL against SQLite and record `exec_ok`, result rows, latency, and database error messages.
-- **Repair**: feed execution errors or result mismatch evidence back into an LLM repair prompt, then re-validate repaired SQL.
-- **Select**: choose the final SQL from original and repaired candidates using practical evidence. The project includes rule-based selectors, result-consistency voting, EASE-Selector, and LLM pairwise correction.
-- **Multi-backend validation**: test selected SQLite-oriented SQL on DuckDB, PostgreSQL, and MySQL, then apply dialect-aware normalization, repair, and candidate selection.
-- **Cross-task A²V transfer**: demonstrate the generate-validate-repair idea on Python and Java code-generation tasks.
+- **Generate**: формирование SQL-кандидатов с помощью Prompt-only, BM25 Schema-RAG, Embedding Schema-RAG, LoRA-only, LoRA + RAG или multi-LLM generation.
+- **Validate**: выполнение SQL-кандидатов в SQLite и сохранение признаков `exec_ok`, результата выполнения, задержки и сообщения об ошибке базы данных.
+- **Repair**: использование ошибки выполнения или признаков несовпадения результата как feedback-сигнала для LLM repair prompt, после чего исправленный SQL снова проходит валидацию.
+- **Select**: выбор итогового SQL из исходных и исправленных кандидатов на основе практических evidence-признаков. В проекте реализованы rule-based selector, result-consistency voting, EASE-Selector и LLM pairwise correction.
+- **Multi-backend validation**: проверка SQLite-ориентированных SQL на DuckDB, PostgreSQL и MySQL с последующей dialect-aware normalization, repair и candidate selection.
+- **Cross-task A²V transfer**: демонстрация идеи generate-validate-repair на задачах генерации кода Python и Java.
 
-## Repository Structure
+## Структура репозитория
 
 ```text
 .
-├── configs/                         # experiment configuration templates
-├── data/                            # local Spider dataset location, ignored by git
-├── demo_backend/                    # FastAPI prototype backend
-├── demo_frontend/                   # React + Vite prototype frontend
-├── docs/                            # thesis/prototype notes and method documentation
-├── runs/                            # local experiment cache/output directory, ignored by git
-├── scripts/                         # setup, RAG, LoRA, analysis, and demo helper scripts
-├── src/a2v/                         # A²V-SQL experiment pipeline
-├── run_demo.sh                      # one-command local prototype launcher
+├── configs/                         # шаблоны конфигураций экспериментов
+├── data/                            # локальное расположение Spider dataset, не коммитится
+├── demo_backend/                    # FastAPI backend интерактивного прототипа
+├── demo_frontend/                   # React + Vite frontend интерактивного прототипа
+├── docs/                            # заметки по прототипу, selector и методологии
+├── runs/                            # локальные кэши и выходы экспериментов, не коммитятся
+├── scripts/                         # вспомогательные скрипты setup, RAG, LoRA, analysis, demo
+├── src/a2v/                         # основной экспериментальный pipeline A²V-SQL
+├── run_demo.sh                      # запуск backend + frontend одной командой
 └── README.md
 ```
 
-The most important pipeline scripts are:
+Ключевые скрипты pipeline:
 
 ```text
-src/a2v/01_build_candidates.py                  # build candidate pools
-src/a2v/02_validate_candidates.py               # SQLite execution validation
-src/a2v/03_score_candidates.py                  # score candidates against execution result
+src/a2v/01_build_candidates.py                  # построение candidate pool
+src/a2v/02_validate_candidates.py               # execution validation в SQLite
+src/a2v/03_score_candidates.py                  # оценка кандидатов по результату выполнения
 src/a2v/04_select_candidates.py                 # rule-based selector
 src/a2v/04b_select_candidates_vote.py           # result-consistency selector
-src/a2v/06c_repair_strong_candidates.py         # stronger error-feedback repair
+src/a2v/06c_repair_strong_candidates.py         # усиленный error-feedback repair
 src/a2v/07c_select_after_strong_repair_practical.py
-src/a2v/09_multibackend_duckdb.py               # DuckDB validation
-src/a2v/09b_multibackend_postgres.py            # PostgreSQL validation
-src/a2v/09c_multibackend_mysql.py               # MySQL validation
+src/a2v/09_multibackend_duckdb.py               # validation в DuckDB
+src/a2v/09b_multibackend_postgres.py            # validation в PostgreSQL
+src/a2v/09c_multibackend_mysql.py               # validation в MySQL
 src/a2v/10_duckdb_dialect_repair.py             # DuckDB dialect repair + candidate select
 src/a2v/10b_postgres_dialect_repair.py          # PostgreSQL dialect repair + candidate select
 src/a2v/10c_mysql_dialect_repair.py             # MySQL dialect repair + candidate select
-src/a2v/12_multibackend_final_summary.py        # multi-backend summary table
+src/a2v/12_multibackend_final_summary.py        # итоговая таблица multi-backend эксперимента
 src/a2v/12b_multibackend_select.py              # cross-backend evidence selector
-src/a2v/17_learned_selector.py                  # EASE selector training/diagnostics
-src/a2v/18_build_semantic_selector_data.py      # pairwise selector data builder
-src/a2v/19_train_semantic_selector.py           # semantic selector training
-src/a2v/20_select_semantic_selector.py          # semantic selector inference
+src/a2v/17_learned_selector.py                  # обучение/диагностика EASE selector
+src/a2v/18_build_semantic_selector_data.py      # построение pairwise данных для selector
+src/a2v/19_train_semantic_selector.py           # обучение semantic selector
+src/a2v/20_select_semantic_selector.py          # inference semantic selector
 src/a2v/21_llm_pairwise_correction_selector.py  # LLM pairwise correction selector
 ```
 
-## Environment Setup
+## Подготовка окружения
 
-Python 3.11 is recommended.
+Рекомендуется Python 3.11.
 
 ```bash
 cd Text-to-SQL
@@ -73,7 +73,7 @@ source .venv/bin/activate
 python -m pip install -U pip
 ```
 
-Install the core Python dependencies used by the prototype and experiments:
+Установите основные Python-зависимости для прототипа и экспериментов:
 
 ```bash
 python -m pip install \
@@ -83,7 +83,7 @@ python -m pip install \
   duckdb psycopg2-binary pymysql cryptography openai
 ```
 
-Install frontend dependencies:
+Установите зависимости frontend:
 
 ```bash
 cd demo_frontend
@@ -91,24 +91,24 @@ npm install
 cd ..
 ```
 
-Create a local environment file if you want to call an online LLM API:
+Если планируется запуск скриптов с online LLM API, создайте локальный `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-Then edit `.env` locally:
+Затем укажите ключи локально:
 
 ```text
 DEEPSEEK_API_KEY=your_key_here
 OPENAI_API_KEY=your_key_here
 ```
 
-Do not commit `.env`. It is ignored by git.
+Файл `.env` не должен попадать в Git. Он уже добавлен в `.gitignore`.
 
-## Data Preparation
+## Подготовка данных
 
-The Spider dataset is expected locally under:
+Spider dataset ожидается локально по следующим путям:
 
 ```text
 data/spider/tables.json
@@ -117,19 +117,19 @@ data/spider/dev.json
 data/spider/database/*/*.sqlite
 ```
 
-The dataset is not committed to this repository. Check the local dataset layout with:
+Датасет не включён в репозиторий. Проверить локальную структуру можно командой:
 
 ```bash
 bash scripts/01_check_data.sh
 ```
 
-Build schema documents and retrieval indexes:
+Построить schema documents и BM25 index:
 
 ```bash
 bash scripts/02_build_rag_index.sh
 ```
 
-Optional embedding index:
+Опционально построить embedding index:
 
 ```bash
 python src/rag/build_embeddings.py \
@@ -138,11 +138,11 @@ python src/rag/build_embeddings.py \
   --model intfloat/e5-small-v2
 ```
 
-## Main A²V-SQL Pipeline
+## Основной A²V-SQL pipeline
 
-A typical Spider dev experiment follows this order.
+Типичный эксперимент на Spider dev выполняется в следующем порядке.
 
-### 1. Build and Validate Candidates
+### 1. Построение и валидация кандидатов
 
 ```bash
 python src/a2v/01_build_candidates.py
@@ -150,7 +150,7 @@ python src/a2v/02_validate_candidates.py
 python src/a2v/03_score_candidates.py
 ```
 
-### 2. Select Initial SQL
+### 2. Первичный выбор SQL
 
 ```bash
 python src/a2v/04_select_candidates.py \
@@ -162,7 +162,7 @@ python src/a2v/04b_select_candidates_vote.py \
   --out runs/outputs/a2v/selected_vote_spider1034.jsonl
 ```
 
-### 3. Repair and Re-select
+### 3. Repair и повторный select
 
 ```bash
 python src/a2v/06c_repair_strong_candidates.py
@@ -170,13 +170,13 @@ python src/a2v/07c_select_after_strong_repair_practical.py
 python src/a2v/11_final_metrics_summary.py
 ```
 
-The important research distinction is that repair expands the candidate pool, while select decides which candidate becomes the final SQL.
+Важно различать два этапа: repair расширяет candidate pool, а select выбирает, какой кандидат станет итоговым SQL.
 
 ## Semantic EASE Selector
 
-EASE-Selector formulates candidate selection as evidence-aware semantic preference ranking. The selector uses only inference-time evidence, such as question text, schema text, SQL structure, execution status, result summary, result-consistency support, and repair trace. Gold SQL and gold execution results are used only to build training labels, not as selector inputs.
+EASE-Selector формулирует candidate selection как evidence-aware semantic preference ranking. На вход selector получает только признаки, доступные во время inference: вопрос, schema text, SQL structure, execution status, result summary, result-consistency support и repair trace. Gold SQL и gold execution result используются только для построения обучающих меток, но не передаются selector как входные признаки.
 
-Build pairwise selector data:
+Построение pairwise данных:
 
 ```bash
 python src/a2v/18_build_semantic_selector_data.py \
@@ -188,7 +188,7 @@ python src/a2v/18_build_semantic_selector_data.py \
   --also_write_fit_all
 ```
 
-Train one fold:
+Обучение одного fold:
 
 ```bash
 python src/a2v/19_train_semantic_selector.py \
@@ -203,7 +203,7 @@ python src/a2v/19_train_semantic_selector.py \
   --lr 2e-5
 ```
 
-Run selector inference:
+Запуск inference:
 
 ```bash
 python src/a2v/20_select_semantic_selector.py \
@@ -214,26 +214,26 @@ python src/a2v/20_select_semantic_selector.py \
   --summary_out runs/outputs/a2v/semantic_selector/summary_multillm_fold0.md
 ```
 
-## Multi-backend Validation and Dialect Repair
+## Multi-backend validation и dialect repair
 
-The project evaluates whether SQLite-oriented SQL can be validated and repaired on DuckDB, PostgreSQL, and MySQL.
+Проект проверяет, насколько SQL, выбранный в SQLite-oriented pipeline, переносится на DuckDB, PostgreSQL и MySQL.
 
 ### DuckDB
 
-DuckDB runs in-process:
+DuckDB запускается in-process:
 
 ```bash
 python src/a2v/09_multibackend_duckdb.py
 python src/a2v/10_duckdb_dialect_repair.py
 ```
 
-If an LLM repair run is interrupted, resume safely:
+Если LLM repair был прерван, можно безопасно продолжить:
 
 ```bash
 python src/a2v/10_duckdb_dialect_repair.py --resume
 ```
 
-### PostgreSQL and MySQL with Docker
+### PostgreSQL и MySQL через Docker
 
 PostgreSQL:
 
@@ -254,7 +254,7 @@ docker run --name a2v-mysql \
   -d mysql:8
 ```
 
-Then run:
+После запуска контейнеров:
 
 ```bash
 python src/a2v/09b_multibackend_postgres.py
@@ -264,46 +264,46 @@ python src/a2v/09c_multibackend_mysql.py
 python src/a2v/10c_mysql_dialect_repair.py
 ```
 
-Resume interrupted LLM repair runs:
+Продолжить прерванные LLM repair запуски:
 
 ```bash
 python src/a2v/10b_postgres_dialect_repair.py --resume
 python src/a2v/10c_mysql_dialect_repair.py --resume
 ```
 
-Build the multi-backend select output and summary:
+Построить multi-backend select output и итоговую таблицу:
 
 ```bash
 python src/a2v/12b_multibackend_select.py
 python src/a2v/12_multibackend_final_summary.py
 ```
 
-The summary reports the staged improvement:
+Итоговая таблица показывает поэтапное улучшение:
 
 ```text
-Before Same Result       # raw selected SQL
-After First Repair Same  # first LLM repair candidate, before candidate selection
-After Select Same        # best candidate after validate + select
+Before Same Result       # исходный выбранный SQL
+After First Repair Same  # первый LLM repair кандидат, до candidate selection
+After Select Same        # лучший кандидат после validate + select
 ```
 
-## Interactive Prototype
+## Интерактивный прототип
 
-The repository includes a local A²V-SQL prototype with a FastAPI backend and a React frontend. The UI demonstrates schema grounding, candidate SQL traces, execution validation, repair evidence, EASE final selection, and Python/Java transfer examples.
+Репозиторий содержит локальный A²V-SQL prototype с FastAPI backend и React frontend. Интерфейс демонстрирует schema grounding, candidate SQL traces, execution validation, repair evidence, EASE final selection, а также перенос идеи A²V на Python и Java.
 
-Run both backend and frontend:
+Запуск backend и frontend одной командой:
 
 ```bash
 ./run_demo.sh
 ```
 
-Open:
+Адреса:
 
 ```text
 Frontend: http://127.0.0.1:5173
 Backend : http://127.0.0.1:8000
 ```
 
-Manual backend/frontend startup:
+Ручной запуск:
 
 ```bash
 python -m uvicorn --app-dir demo_backend main:app --reload --host 127.0.0.1 --port 8000
@@ -312,31 +312,31 @@ cd demo_frontend
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-## Reported Thesis Results
+## Основные результаты диссертации
 
-The thesis reports the following high-level findings on Spider dev (`n = 1034`):
+В работе приводятся следующие основные результаты на Spider dev (`n = 1034`):
 
-| Stage / Method | Execution Accuracy |
+| Этап / метод | Execution Accuracy |
 |---|---:|
 | Prompt-only | 0.114 |
 | Embedding Schema-RAG | 0.734 |
 | Error-feedback repair | 0.779 |
 | EASE-Selector | 0.834 |
 
-The key conclusion is that reliability is improved not only by stronger SQL generation, but by the complete system process that validates, repairs, and selects among candidates.
+Главный вывод состоит в том, что надёжность LLM-based Text-to-SQL повышается не только за счёт более сильной генерации, но и за счёт полного системного процесса, объединяющего validation, repair и selection.
 
-## Notes on Reproducibility
+## Воспроизводимость
 
-- Large datasets, model checkpoints, virtual environments, and experiment outputs are intentionally ignored by git.
-- `runs/` is a local cache/output directory and should be regenerated locally.
-- PostgreSQL and MySQL experiments require local Docker containers or equivalent running database services.
-- LLM API-based scripts require local API keys in `.env` or exported environment variables.
-- Exact numeric results may vary if online LLM calls are re-run with different model versions or decoding behavior.
+- Большие датасеты, model checkpoints, virtual environments и experiment outputs намеренно не включаются в Git.
+- `runs/` является локальной директорией для кэшей и результатов и должна пересоздаваться локально.
+- PostgreSQL и MySQL эксперименты требуют Docker containers или эквивалентных локальных database services.
+- Скрипты с online LLM вызовами требуют локальных API keys в `.env` или переменных окружения.
+- Точные численные результаты могут немного отличаться при повторном запуске online LLM из-за изменений модели или decoding behavior.
 
-## Security and Safety
+## Безопасность
 
-This is a research prototype, not a production SQL service. Do not expose it directly to untrusted users or production databases. The prototype executes generated SQL during validation, so it should be used only with local benchmark databases or disposable test databases.
+Это исследовательский прототип, а не production SQL service. Не следует открывать его для недоверенных пользователей или подключать к production databases. Прототип выполняет сгенерированные SQL во время validation, поэтому его нужно использовать только с локальными benchmark databases или одноразовыми test databases.
 
-## License
+## Лицензия
 
-No license has been declared yet. If this repository is made public, add an explicit license before reuse or redistribution.
+Лицензия пока явно не указана. Если репозиторий становится публичным или используется другими людьми, следует добавить отдельный `LICENSE` файл.
